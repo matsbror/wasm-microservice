@@ -1,0 +1,22 @@
+spin_manifest_version = 2
+
+[application]
+name = "dockercon"
+version = "0.1.0"
+authors = ["your_github_username <sangeeta.kakati19@gmail.com>"]
+description = ""
+
+[[trigger.http]]
+route = "/yo"
+component = "dockercon"
+
+[component.dockercon]
+#before build
+source = "target/wasm32-wasi/release/dockercon.wasm"
+
+#after build
+#source = "dockercon.wasm"
+allowed_outbound_hosts = []
+[component.dockercon.build]
+command = "cargo build --target wasm32-wasi --release"
+watch = ["src/**/*.rs", "Cargo.toml"]
