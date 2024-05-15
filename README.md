@@ -1,16 +1,21 @@
+# Simple spin project 
+Reference from docker conference: https://github.com/nigelpoulton/dockercon2023-wasm-lab/tree/main
+
+# Getting spin
 ```
 curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash -s -- -v v2.4.2
 ```
-
+# Creating the project
 ```
 spin new
 ```
+
+# Choose from the templates
 Choose http-rust, name the app "anyname", and set the following options:
 
 HTTP base: /
 HTTP path: /yo
 
-Can make changes to lib.rs 
 
 Save  changes and run spin build to build the app as a Wasm app.
 
@@ -41,7 +46,7 @@ docker buildx build \
   -t wasmdocker .
 ```
 
-#Run
+# Run
 
 ```
 docker run -d \
