@@ -1,51 +1,82 @@
-# wasm-microservice
-A project repository to investigate running WebAssembly microservices in a heterogeneous infrastructure
-
-
-# Journal
-
-I am running this on the VisionFive 2 board from [StarFive](https://doc-en.rvspace.org/Doc_Center/visionfive_2.html).
-
-This board is running [Ubuntu 24.04](https://ubuntu.com/download/risc-v) following instructions [here](https://wiki.ubuntu.com/RISC-V/StarFive%20VisionFive%202).
-
-## Rust and WebAssembly
-
-Install rust and WebAssembly target:
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-rustup target install wasm32-wasi
+```
+curl -fsSL https://developer.fermyon.com/downloads/install.sh | bash -s -- -v v2.4.2
 ```
 
-Install some other pre-requisites
+```
+spin new
+```
+Choose http-rust, name the app "anyname", and set the following options:
 
-```bash
-sudo apt install build-essential cmake python3 clang-18 ninja-build
+HTTP base: /
+HTTP path: /yo
+
+Can make changes to lib.rs 
+
+Save  changes and run spin build to build the app as a Wasm app.
 
 ```
-
-Install wasi-sdk from https://github.com/WebAssembly/wasi-sdk/releases/tag/wasi-sdk-22
-
-I have compiled it from source, but you should be able to use the regular clang compiler and just use the wasi sysroot. But building wasi-sdk on the VisionFive 2 takes a _very_ long time. 
-
-After compilation has finished. Move the wasi-sdk to `/opt`
-
-```bash
-sudo mv build/install/opt/wasi-sdk /opt
-export WASI_SDK_PATH=/opt/wasi-sdk
+spin build
+spin up
 ```
 
+# With docker
 
-On RISCV you also need to explicitly install `rust-lld`
-
-```bash
-sudo apt install lld-18
-cargo install cargo-binutils
-mkdir -p ~/.rustup/toolchains/stable-riscv64gc-unknown-linux-gnu/lib/rustlib/riscv64gc-unknown-linux-gnu/bin
-ln -s /usr/lib/llvm-18/bin/lld ~/.rustup/toolchains/stable-riscv64gc-unknown-linux-gnu/lib/rustlib/riscv64gc-unknown-linux-gnu/bin/rust-lld
+Dockerfile
+```
+FROM scratch
+COPY /target/wasm32-wasi/release/wasmdocker.wasm .
+COPY spin.toml .
 ```
 
-## Spin
+The wasm module is available in the src directory after wasm build.
+Therefore, we can edit spin.toml and replace 
+```
+source = "wasmdocker.wasm"
+```
 
-Eventually, we want to 
+# Build 
+```
+docker buildx build \
+  --platform wasi/wasm \
+  -t wasmdocker .
+```
+
+#Run
+
+```
+docker run -d \
+  --runtime=io.containerd.spin.v2 \
+  --platform=wasi/wasm \
+  -p 3000:80 \
+  wasmdocker /
+```
+http://localhost:3000/yo
+
+
+# wrk usage
+```
+sudo apt-get install build-essential libssl-dev git -y
+git clone https://github.com/wg/wrk.git wrk
+cd wrk
+make
+# move the executable to somewhere in PATH, ex:
+sudo cp wrk /usr/local/bin
+```
+
+# To test our server
+
+./wrk -t12 -c400 -d30s http://localhost:3000/yo
+
+-t12 specifies 12 threads.
+-c400 specifies 400 connections.
+-d30s specifies the duration of 30 seconds.
+
+# Using the pre-built WRK Docker image as an alternative:
+```
+docker run --rm -it williamyeh/wrk -t12 -c400 -d30s http://host.docker.internal:3000/yo
+```
+# For more runtimes
+
+https://docs.docker.com/desktop/wasm/
+
 
