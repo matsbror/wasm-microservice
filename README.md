@@ -342,9 +342,118 @@ git checkout containerd-shim-wasmtime/v0.4.0
 OPT_PROFILE=release RUNTIMES=wasmtime make build
 ```
 
+It should build cleanly. When done, install it like:
+
+```bash
+sudo install ./target//riscv64gc-unknown-linux-gnu/release/containerd-shim-wasmtime-v1 /usr/local/bin
+sudo ln -sf ./containerd-shim-wasmtime-v1 /usr/local/bin/containerd-shim-wasmtimed-v1
+sudo ln -sf ./containerd-shim-wasmtime-v1 /usr/local/bin/containerd-wasmtimed
+```
+
+
 ## containerd-shim-spin
 
+This one is a little more involved than `runwasi` as you need to change the reference to the `main` branch and remove references to sqs trigger which doesn't work on RISCV64 (yet).
 
+Get the code:
+```bash
+git clone https://github.com/spinkube/containerd-shim-spin.git
+cd containerd-shim-spin
+```
+
+Now, edit `containerd-shim-spin/Cargo.toml`. Remove all `tag` and `rev` specifications of all references to the spin github repository: `https://github.com/fermyon/spin`. Then comment out the dependency to `trigger-sqs`. Also bump the Wasmtime dependency to version `20.0.2` 
+
+Here is the diff of `containerd-shim-spin/Cargo.toml`:
+```diff
+diff --git a/containerd-shim-spin/Cargo.toml b/containerd-shim-spin/Cargo.toml
+index 36fd396..57032f4 100644
+--- a/containerd-shim-spin/Cargo.toml
++++ b/containerd-shim-spin/Cargo.toml
+@@ -14,21 +14,21 @@ Containerd shim for running Spin workloads.
+ containerd-shim-wasm = "0.5.0"
+ containerd-shim = "0.7.1"
+ log = "0.4"
+-spin-app = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
+-spin-core = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
+-spin-componentize = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
++spin-app = { git = "https://github.com/fermyon/spin" }
++spin-core = { git = "https://github.com/fermyon/spin" }
++spin-componentize = { git = "https://github.com/fermyon/spin" }
+ # Enable loading components precompiled by the shim
+-spin-trigger = { git = "https://github.com/fermyon/spin", tag = "v2.4.3", features = ["unsafe-aot-compilation"] }
+-spin-trigger-http = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
+-spin-trigger-redis = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
++spin-trigger = { git = "https://github.com/fermyon/spin", features = ["unsafe-aot-compilation"] }
++spin-trigger-http = { git = "https://github.com/fermyon/spin"}
++spin-trigger-redis = { git = "https://github.com/fermyon/spin" }
+ trigger-sqs = { git = "https://github.com/fermyon/spin-trigger-sqs", rev = "ee1195ad76b78c41f9d8291e3470bcb0e8c01e66" }-trigger-command = { git = "https://github.com/fermyon/spin-trigger-command" , rev = "cc09ed61c5cd04de507b62a6f4912d8ae026bff6" }
+-spin-manifest = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
+-spin-loader = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
+-spin-oci = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
+-spin-common = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
+-spin-expressions = { git = "https://github.com/fermyon/spin", tag = "v2.4.3" }
+-wasmtime = "18.0.1"
++trigger-command = { git = "https://github.com/fermyon/spin-trigger-command" }
++spin-manifest = { git = "https://github.com/fermyon/spin" }
++spin-loader = { git = "https://github.com/fermyon/spin" }
++spin-oci = { git = "https://github.com/fermyon/spin" }
++spin-common = { git = "https://github.com/fermyon/spin" }
++spin-expressions = { git = "https://github.com/fermyon/spin" }
++wasmtime = "20.0.2"
+ tokio = { version = "1.37", features = ["rt"] }
+ openssl = { version = "*", features = ["vendored"] }
+ serde = "1.0"
+ ```
+
+ Next edit the file `containerd-shim-spin/src/engine.rs` and comment out all references to sqs.
+
+Here is the diff of the file `containerd-shim-spin/src/engine.rs`:
+```diff
+diff --git a/containerd-shim-spin/src/engine.rs b/containerd-shim-spin/src/engine.rs
+index a23b08d..653ba27 100644
+--- a/containerd-shim-spin/src/engine.rs
++++ b/containerd-shim-spin/src/engine.rs
+@@ -24,7 +24,7 @@ use spin_trigger_http::HttpTrigger;
+ use spin_trigger_redis::RedisTrigger;
+ use tokio::runtime::Runtime;
+ use trigger_command::CommandTrigger;
+-use trigger_sqs::SqsTrigger;
++//use trigger_sqs::SqsTrigger;
+ use url::Url;
+
+ const SPIN_ADDR: &str = "0.0.0.0:80";
+@@ -235,6 +235,7 @@ impl SpinEngine {
+                     info!(" >>> running spin redis trigger");
+                     redis_trigger.run(spin_trigger::cli::NoArgs)
+                 }
++/*
+                 SqsTrigger::TRIGGER_TYPE => {
+                     let sqs_trigger: SqsTrigger = self
+                         .build_spin_trigger(working_dir.clone(), app.clone(), app_source.clone())
+@@ -244,6 +245,7 @@ impl SpinEngine {
+                     info!(" >>> running spin trigger");
+                     sqs_trigger.run(spin_trigger::cli::NoArgs)
+                 }
++*/
+                 CommandTrigger::TRIGGER_TYPE => {
+                     let command_trigger: CommandTrigger = self
+                         .build_spin_trigger(working_dir.clone(), app.clone(), app_source.clone())
+@@ -481,7 +483,7 @@ fn trigger_command_for_resolved_app_source(resolved: &ResolvedAppSource) -> Resu
+         match trigger_type.to_owned() {
+             RedisTrigger::TRIGGER_TYPE
+             | HttpTrigger::TRIGGER_TYPE
+-            | SqsTrigger::TRIGGER_TYPE
++//            | SqsTrigger::TRIGGER_TYPE
+             | CommandTrigger::TRIGGER_TYPE => types.push(trigger_type),
+             _ => {
+                 todo!("Only Http, Redis and SQS triggers are currently supported.")                 
+```
+
+Now you are ready to bulid. The default makefile assumes building in a cross-compilation environment. The instructions below is for when you are building them directly on the target host.
+
+```bash
+cargo build --release --manifest-path=containerd-shim-spin/Cargo.toml
+```
 
 # Issues building on Jetson Nano Aarch64
 
@@ -364,6 +473,8 @@ OPT_PROFILE=release RUNTIMES=wasmtime make build
 The default makefile assumes building in a cross-compilation environment. The instructions below is for when you are building them directly on the target host.
 
 The regular cc compiler on the Jetson Nano on Ubuntu 18.04 is too old so we had to install a new gcc version 12.3 which is going to be used in the building process.
+
+Most likely sqs trigger will cause problem, so comment out all references to sqs in `containerd-shim-spin/Cargo.toml` and in `containerd-shim-spin/src/engine.rs`. 
 
 ```bash
 git clone git@github.com:spinkube/containerd-shim-spin.git
